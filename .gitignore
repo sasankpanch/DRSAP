@@ -1,0 +1,16 @@
+# Node/JavaScript dependencies
+node_modules/
+.npm/
+
+# Python cache and environments
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# IDEs and OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
