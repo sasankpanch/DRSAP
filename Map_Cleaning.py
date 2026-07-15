@@ -16,11 +16,12 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 our_mesh = "PLTL-Room-Scan.ply"
 baseline_mesh = "PLTL-Room-LIDAR-Scan.ply"
+conference_mesh = "Conference_Room.ply"
+no_cheese_mesh = "No_Cheese.ply"
  
 print("Loading mesh and Point Cloud")
-mesh = open3d.io.read_triangle_mesh(our_mesh)
-pcd = mesh.sample_points_uniformly(number_of_points=500000)                         # This is to convert to point cloud
-
+mesh = open3d.io.read_triangle_mesh(no_cheese_mesh)
+pcd = mesh.sample_points_uniformly(number_of_points=1000000)                         # This is to convert to point cloud
 
 # 1. Statistical Outlier
 print("Statiscal Outlier Removal..")
@@ -42,73 +43,22 @@ print("DBSCAN CLustering..")
 eps = 0.5                                                                           # nieghborhood radius
 min_points = 15         
 
-labels = np.array(voxel_downsized.cluster_dbscan(eps=eps, min_points=min_points, print_progress= True))
+labels = np.array(voxel_downsized.cluster_dbscan(eps=eps, min_points=min_points, print_progress=True))
 
-    # extracting largest cluster label
-valid_labels = labels[labels >= 0]      
 
-if len(valid_labels) > 0:
-    largest_cluster_idx = np.bincount(valid_labels).argmax()
-    print(f"Yipeeee!!! Main room structure found, Cluster ID: {largest_cluster_idx}")
+valid_indices = np.where(labels >= 0)[0]
+outlier_indices = np.where(labels < 0)[0]
 
-    clean_indices = np.where(labels == largest_cluster_idx)[0]
-    outlier_indices = np.where(labels != largest_cluster_idx)[0]
-    
-    pcd_final_clean = voxel_downsized.select_by_index(clean_indices)
+if len(valid_indices) > 0:
+    print(f"Keeping {len(np.unique(labels[labels >= 0]))} valid clusters.")
+    pcd_final_clean = voxel_downsized.select_by_index(valid_indices)
     pcd_outlier = voxel_downsized.select_by_index(outlier_indices)
-
 else:
-    print("Error, DBSCAN couldn't find distinct clusters, saving downsized cloud instead...")
+    print("DBSCAN couldn't find distinct clusters, saving downsized cloud instead...")
     pcd_final_clean = voxel_downsized
     pcd_outlier = open3d.geometry.PointCloud()
 
-# Wooooowwwwwww good job :D 
-# Wooooowwwwwww good job :D 
-# Wooooowwwwwww good job :D 
-# 5 Semantic Segmentation
-print("Semantic Segmentation..")
-CKPT = "randlanet_s3dis.pth"
-CFG = "randlanet_s3dis.yml"
-CKPT_URL = "https://storage.googleapis.com/open3d-releases/model-zoo/randlanet_s3dis_202201071330utc.pth"
-CFG_URL = "https://raw.githubusercontent.com/isl-org/Open3D-ML/main/ml3d/configs/randlanet_s3dis.yml"
-
-KEEP = {0, 1, 2}
-CLASS_COLOR = {0: [0.85, 0.85, 0.85], 1: [0.55, 0.35, 0.20], 2: [0.75, 0.70, 0.55]}
-out_path = "Room_Semantic.ply"
-
-for f, url in [(CKPT, CKPT_URL), (CFG, CFG_URL)]:
-    if not os.path.exists(f):
-        print(f"downloading {f} ...")
-        urllib.request.urlretrieve(url, f)
-
-pts = np.asarray(pcd_final_clean.points, dtype=np.float32)
-
-if pcd_final_clean.has_colors():
-    feat = np.asarray(pcd_final_clean.colors, dtype=np.float32)          # model expects real RGB
-else:
-    print("pcd_final_clean has no color -- feeding zeros, expect worse results than the S3DIS benchmark")
-    feat = np.zeros_like(pts)
-
-cfg = _ml3d.utils.Config.load_from_file(CFG)
-model = ml3d.models.RandLANet(**cfg.model)
-pipeline = ml3d.pipelines.SemanticSegmentation(model, device="cpu", **cfg.pipeline)
-pipeline.load_ckpt(CKPT)
-
-data = {"point" : pts, "feat" : feat, "label" : np.zeros(len(pts), dtype=np.int32)}
-labels = pipeline.run_inference(data)["predict_labels"]
-mask = np.isin(labels, list(KEEP))
-
-seg = open3d.geometry.PointCloud()
-seg.points = open3d.utility.Vector3dVector(pts[mask])
-seg.colors = open3d.utility.Vector3dVector(np.array([CLASS_COLOR[l] for l in labels[mask]]))
-open3d.io.write_point_cloud(out_path, seg)
-print(f"kept {mask.sum()}/{len(pts)} pts (ceiling/floor/wall) -> {out_path}")
-
-
-#New point cloud based on the previous one but only leaves walls, ceiling and floor
-pcd_final_clean = seg
-
-# normal
+# 5. Normalization
 pcd_final_clean.estimate_normals(search_param=open3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
 
 pcd_final_clean.orient_normals_consistent_tangent_plane(k=15)     # "plane", not "planes"
@@ -120,7 +70,7 @@ pcd_final_clean.orient_normals_consistent_tangent_plane(k=15)     # "plane", not
 # min_plane_ratio:          how big the fit has to be to count
 print("RANSAC Plane Segmentation")
 
-def plane_segmentor(pcd, max_planes=6, dist_thres=0.03, ransac_n=3, num_iter=1000, min_plane_ratio=0.01, normal_angle_thres=15):
+def plane_segmentor(pcd, max_planes=6, dist_thres=0.05, ransac_n=3, num_iter=10000, min_plane_ratio=0.005, normal_angle_thres=25):
     
     min_plane_points = max(100, int(min_plane_ratio * len(pcd.points)))
     remaining = pcd
@@ -166,23 +116,123 @@ def plane_segmentor(pcd, max_planes=6, dist_thres=0.03, ransac_n=3, num_iter=100
 # RANSAC Function Call
 plane_models, plane_clouds, pcd_non_planar = plane_segmentor(
     pcd_final_clean,                                                                    # dropped the stray "pcd"
-    max_planes=6, dist_thres=0.03, ransac_n=3, num_iter=1000,
-    min_plane_ratio=0.01, normal_angle_thres=15
+    max_planes=12, dist_thres=0.05, ransac_n=3, num_iter=10000,
+    min_plane_ratio=0.002, normal_angle_thres=25
 )
 
 if not plane_clouds:
     raise SystemExit("no planes found -- check that segmentation kept enough structural points")
 
-pcd_structure = plane_clouds[0]
-for pc in plane_clouds[1:]:
-    pcd_structure += pc
+output_dir = "segmented_output"
+os.makedirs(output_dir, exist_ok=True)
+print(f"Output files will be saved in: {os.path.abspath(output_dir)}")
 
-print(f"Yayyyy, Found {len(plane_clouds)} planes and {len(pcd_structure.points)} structural pts, "
-      f"{len(pcd_non_planar.points)} were left over as clutter/furniture")
+# Classifying planes  (band based)
+print("\nClassifying primary planes into Floor, Ceiling, Tables, and Walls...")
+floor_pcd = open3d.geometry.PointCloud()
+ceiling_pcd = open3d.geometry.PointCloud()
+walls_pcd = open3d.geometry.PointCloud()
+tables_pcd = open3d.geometry.PointCloud()
 
-# Outputting files
-print("writing files..")
-open3d.io.write_point_cloud("Clean_Room.ply", pcd_final_clean)
-open3d.io.write_point_cloud("Outlier_Room.ply", pcd_outlier)
-open3d.io.write_point_cloud("Room_Structure.ply", pcd_structure)
-open3d.io.write_point_cloud("Room_Clutter.ply", pcd_non_planar)
+horizontal_planes_info = []
+all_coords = np.asarray(pcd_final_clean.points)
+z_midpoint = (np.min(all_coords[:, 2]) + np.max(all_coords[:, 2])) / 2.0
+
+for i, plane_pc in enumerate(plane_clouds):
+    a, b, c, d = plane_models[i]
+    plane_normal = np.array([a, b, c])
+    plane_normal /= np.linalg.norm(plane_normal)
+    
+    # Identify Horizontal Surfaces (|n_z| > 0.80)
+    if np.abs(plane_normal[2]) > 0.80:
+        mean_z = np.mean(np.asarray(plane_pc.points)[:, 2])
+        horizontal_planes_info.append((i, mean_z, plane_pc))
+                
+    # Identify Vertical Surfaces or Walls (|n_z| < 0.40)
+    elif np.abs(plane_normal[2]) < 0.40:
+        print(f" -> Plane {i} classified as WALL")
+        walls_pcd += plane_pc
+    else:
+        pcd_non_planar += plane_pc
+
+# Sorting horizontal planes into height bands
+if len(horizontal_planes_info) > 0:
+    horizontal_planes_info.sort(key=lambda x: x[1])
+    lowest_z = horizontal_planes_info[0][1]
+    highest_z = horizontal_planes_info[-1][1]
+    
+    floor_band_limit = lowest_z + 0.20
+    ceiling_band_limit = highest_z - 0.20
+    
+    for idx, mean_z, plane_pc in horizontal_planes_info:
+        if mean_z <= floor_band_limit:
+            print(f" -> Plane {idx} (z={mean_z:.2f}m) grouped into FLOOR")
+            floor_pcd += plane_pc
+        elif mean_z >= ceiling_band_limit:
+            print(f" -> Plane {idx} (z={mean_z:.2f}m) grouped into CEILING")
+            ceiling_pcd += plane_pc
+        else:
+            print(f" -> Plane {idx} (z={mean_z:.2f}m) classified as TABLE SURFACE")
+            tables_pcd += plane_pc
+
+# coarse wall second pass
+print("\nRunning Second-Pass Wall Recovery on remaining clutter...")
+clutter_working = open3d.geometry.PointCloud(pcd_non_planar)
+temp_non_wall = open3d.geometry.PointCloud()
+
+# Run up to 4 coarse passes to extract wide or bumpy vertical structures
+for pass_idx in range(4):
+    if len(clutter_working.points) < 5000:  # Stop if the leftover cloud is too small
+        break
+    
+    # 22cm threshold allows the plane fit to sweep up column faces and window recesses
+    plane_model, inliers = clutter_working.segment_plane(
+        distance_threshold=0.22, 
+        ransac_n=3,
+        num_iterations=2000
+    )
+    
+    a, b, c, d = plane_model
+    normal = np.array([a, b, c])
+    normal /= np.linalg.norm(normal)
+    
+    plane_pc = clutter_working.select_by_index(inliers)
+    clutter_working = clutter_working.select_by_index(inliers, invert=True)
+    
+    # If the plane normal is vertical, it's our target wall
+    if np.abs(normal[2]) < 0.40:
+        print(f" -> Recovered bumpy wall plane (columns/windows) from clutter ({len(plane_pc.points)} points)")
+        walls_pcd += plane_pc
+    else:
+        # If it's a random flat object (like a table top) store it to return to clutter later
+        temp_non_wall += plane_pc
+
+# Recombine actual leftover clutter
+pcd_non_planar = clutter_working + temp_non_wall
+
+# Recolor elements
+floor_pcd.paint_uniform_color([0.1, 0.8, 0.1])      # Green Floor
+ceiling_pcd.paint_uniform_color([0.1, 0.1, 0.8])    # Blue Ceiling
+walls_pcd.paint_uniform_color([0.8, 0.1, 0.1])      # Red Walls
+tables_pcd.paint_uniform_color([0.8, 0.8, 0.1])     # Yellow Tables
+
+
+# Writing files safely
+print("\nWriting files safely to output directory...")
+
+def save_cloud(filename, pcd):
+    filepath = os.path.join(output_dir, filename)
+    if not pcd.is_empty():
+        open3d.io.write_point_cloud(filepath, pcd)
+        print(f" -> Successfully wrote {filepath} ({len(pcd.points)} points)")
+    else:
+        print(f" -> Skipped {filepath} (Cloud is empty)")
+
+save_cloud("Clean_Room.ply", pcd_final_clean)
+save_cloud("Floor.ply", floor_pcd)
+save_cloud("Ceiling.ply", ceiling_pcd)
+save_cloud("Walls.ply", walls_pcd)
+save_cloud("Tables.ply", tables_pcd)
+save_cloud("Clutter_Furniture.ply", pcd_non_planar)
+
+print("\nProcessing complete!")
