@@ -16,7 +16,7 @@ Flask
 fonttools
 fsspec
 grpcio
-idn
+idna
 importlib_metadata
 importlib_resources
 itsdangerous
@@ -27,7 +27,7 @@ jsonschema
 jsonschema-specifications
 jupyter_core
 kiwisolver
-Markdo
+Markdown
 MarkupSafe
 matplotlib
 mpmath
@@ -37,7 +37,7 @@ nest-asyncio
 networkx
 numpy
 open3d
-packagin
+packaging
 pandas
 pillow
 platformdirs
