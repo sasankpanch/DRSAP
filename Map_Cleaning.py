@@ -18,10 +18,13 @@ our_mesh = "PLTL-Room-Scan.ply"
 baseline_mesh = "PLTL-Room-LIDAR-Scan.ply"
 conference_mesh = "Conference_Room.ply"
 no_cheese_mesh = "No_Cheese.ply"
+file_stat = os.stat(our_mesh)
+
+points = file_stat.st_size / 60.0
  
 print("Loading mesh and Point Cloud")
 mesh = open3d.io.read_triangle_mesh(no_cheese_mesh)
-pcd = mesh.sample_points_uniformly(number_of_points=1000000)                         # This is to convert to point cloud
+pcd = mesh.sample_points_uniformly(number_of_points=points)                         # This is to convert to point cloud
 
 # 1. Statistical Outlier
 print("Statiscal Outlier Removal..")
