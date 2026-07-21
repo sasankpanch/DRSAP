@@ -12,10 +12,10 @@ import trimesh
 from scipy.spatial import ConvexHull
 from scipy.spatial.transform import Rotation
 
-our_mesh = "PLTL-Room-Scan.ply"
-baseline_mesh = "PLTL-Room-LIDAR-Scan.ply"
-conference_mesh = "Conference_Room.ply"
-no_cheese_mesh = "No_Cheese.ply"         
+our_mesh = "segmented_input/PLTL-Room-Scan.ply"
+baseline_mesh = "segmented_input/PLTL-Room-LIDAR-Scan.ply"
+conference_mesh = "segmented_input/Conference_Room.ply"
+no_cheese_mesh = "segmented_input/No_Cheese.ply"
 output_dir = "segmented_output_advanced"
 
 
