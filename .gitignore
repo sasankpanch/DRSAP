@@ -14,4 +14,8 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
-.ply
+*.ply
+segmented_output/*.ply
+segmented_output_advanced/*.ply
+.claude/
+./logs
