@@ -25,7 +25,7 @@ our_editing_room = "segmented_input/Editing-Room.ply"
 #points = int(file_stat.st_size / 20)
  
 print("Loading mesh and Point Cloud")
-mesh = open3d.io.read_triangle_mesh(baseline_editing_room)                 # <-- change the file
+mesh = open3d.io.read_triangle_mesh(our_mesh)                 # <-- change the file
 pcd = mesh.sample_points_uniformly(number_of_points=1000000)                         # This is to convert to point cloud
 
 # 1. Statistical Outlier
@@ -239,5 +239,9 @@ save_cloud("Ceiling.ply", ceiling_pcd)
 save_cloud("Walls.ply", walls_pcd)
 save_cloud("Tables.ply", tables_pcd)
 save_cloud("Clutter_Furniture.ply", pcd_non_planar)
+
+# 6. Combine the room-shell surfaces into a single cloud
+room_combined = floor_pcd + ceiling_pcd + walls_pcd
+save_cloud("Room_Combined.ply", room_combined)
 
 print("\nProcessing complete!")

@@ -40,7 +40,7 @@ class PlaneRecord:
 # ---------------------------------------------------------------------------
 
 print("Loading mesh and Point Cloud")
-mesh = open3d.io.read_triangle_mesh(baseline_editing_room)
+mesh = open3d.io.read_triangle_mesh(baseline_mesh)
 pcd = mesh.sample_points_uniformly(number_of_points=1000000)
 
 print("Statiscal Outlier Removal..")
