@@ -16,6 +16,9 @@ our_mesh = "segmented_input/PLTL-Room-Scan.ply"
 baseline_mesh = "segmented_input/PLTL-Room-LIDAR-Scan.ply"
 conference_mesh = "segmented_input/Conference_Room.ply"
 no_cheese_mesh = "segmented_input/No_Cheese.ply"
+baseline_editing_room = "segmented_input/Editing-Room-Lidar.ply"
+our_editing_room = "segmented_input/Editing-Room.ply"
+
 output_dir = "segmented_output_advanced"
 
 
@@ -37,7 +40,7 @@ class PlaneRecord:
 # ---------------------------------------------------------------------------
 
 print("Loading mesh and Point Cloud")
-mesh = open3d.io.read_triangle_mesh(our_mesh)
+mesh = open3d.io.read_triangle_mesh(baseline_editing_room)
 pcd = mesh.sample_points_uniformly(number_of_points=1000000)
 
 print("Statiscal Outlier Removal..")

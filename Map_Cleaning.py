@@ -14,18 +14,18 @@ print(f"Using accelerated hardware: {device}")
 import os
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
-oour_mesh = "segmented_input/PLTL-Room-Scan.ply"
+our_mesh = "segmented_input/PLTL-Room-Scan.ply"
 baseline_mesh = "segmented_input/PLTL-Room-LIDAR-Scan.ply"
 conference_mesh = "segmented_input/Conference_Room.ply"
 no_cheese_mesh = "segmented_input/No_Cheese.ply"
-baseline_editing_room = "Editing-Room-Lidar.ply"
-our_editing_room = "Editing-Room.ply"
+baseline_editing_room = "segmented_input/Editing-Room-Lidar.ply"
+our_editing_room = "segmented_input/Editing-Room.ply"
 
 #file_stat = os.stat(no_cheese_mesh)                                 # <-- change the file
 #points = int(file_stat.st_size / 20)
  
 print("Loading mesh and Point Cloud")
-mesh = open3d.io.read_triangle_mesh(our_editing_room)                 # <-- change the file
+mesh = open3d.io.read_triangle_mesh(baseline_editing_room)                 # <-- change the file
 pcd = mesh.sample_points_uniformly(number_of_points=1000000)                         # This is to convert to point cloud
 
 # 1. Statistical Outlier
