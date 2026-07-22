@@ -18,3 +18,4 @@ segmented_output/*
 !segmented_output/.gitkeep
 .claude/
 ./logs
+segmented_output_advanzed/*
