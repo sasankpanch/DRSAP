@@ -9,6 +9,7 @@ import numpy as np
 import open3d
 import matplotlib.pyplot as plt
 import trimesh
+import trimesh.repair
 from scipy.spatial import ConvexHull
 from scipy.spatial.transform import Rotation
 
@@ -404,8 +405,11 @@ def intersect_three_planes(p1, p2, p3, det_tol=1e-3):
 def ring_is_monotonic(angles):
     """True iff the angles (already in candidate ring order) sweep the full
     circle exactly once with no reversal -- i.e. the ring is star-convex
-    around its centroid in this order."""
-    closed = np.concatenate([angles, angles[:1] + 2 * np.pi])
+    around its centroid in this order. Unwrap first: raw atan2 output wraps
+    at +-180deg, which looks like a reversal even when the sweep is a
+    perfectly valid monotonic ring that happens to cross that boundary."""
+    unwrapped = np.unwrap(angles)
+    closed = np.concatenate([unwrapped, unwrapped[:1] + 2 * np.pi])
     return bool(np.all(np.diff(closed) > 1e-9))
 
 
@@ -520,35 +524,32 @@ def build_polyhedron(floor_records, ceiling_records, wall_records, up_axis, east
     idx_ceiling = lambda i: n + i
     idx_c_floor, idx_c_ceiling = 2 * n, 2 * n + 1
 
-    def orient(i0, i1, i2, expected_outward):
-        v0, v1, v2 = np.array(vertices[i0]), np.array(vertices[i1]), np.array(vertices[i2])
-        face_normal = np.cross(v1 - v0, v2 - v0)
-        if np.dot(face_normal, expected_outward) < 0:
-            return (i0, i2, i1)
-        return (i0, i1, i2)
-
+    # Emit triangles in any consistent order per quad -- don't try to guess
+    # per-face outward direction with a heuristic dot product, since two
+    # triangles of a near-planar (but not exactly planar) real-world quad can
+    # legitimately disagree on that by floating-point noise. Global winding
+    # consistency is fixed below via trimesh's own edge-adjacency repair, and
+    # the overall inside-out/outside-in sign is checked once at the end.
     faces = []
     for i in range(n):
         i1 = (i + 1) % n
-        faces.append(orient(idx_c_ceiling, idx_ceiling(i), idx_ceiling(i1), up_axis))
-        faces.append(orient(idx_c_floor, idx_floor(i1), idx_floor(i), -up_axis))
-
-        outward = walls_sorted[i].centroid - centroid_floor_3d
-        outward = outward - np.dot(outward, up_axis) * up_axis
-        norm_outward = np.linalg.norm(outward)
-        outward = outward / norm_outward if norm_outward > 1e-6 else walls_sorted[i].normal
-
-        faces.append(orient(idx_floor(i), idx_floor(i1), idx_ceiling(i1), outward))
-        faces.append(orient(idx_floor(i), idx_ceiling(i1), idx_ceiling(i), outward))
+        faces.append((idx_c_ceiling, idx_ceiling(i), idx_ceiling(i1)))
+        faces.append((idx_c_floor, idx_floor(i1), idx_floor(i)))
+        faces.append((idx_floor(i), idx_floor(i1), idx_ceiling(i1)))
+        faces.append((idx_floor(i), idx_ceiling(i1), idx_ceiling(i)))
 
     mesh = trimesh.Trimesh(vertices=np.array(vertices), faces=np.array(faces), process=True)
+    trimesh.repair.fix_winding(mesh)
 
     if not mesh.is_watertight:
         return None, "assembled mesh is not watertight"
     if not mesh.is_winding_consistent:
-        return None, "assembled mesh winding is inconsistent"
+        return None, "assembled mesh winding could not be made consistent"
+
+    if mesh.volume < 0:                        # consistent but inside-out -- flip once, globally
+        mesh.invert()
     if mesh.volume <= 0:
-        return None, f"non-positive mesh volume ({mesh.volume:.4f}) -- winding bug, not masking with abs()"
+        return None, f"non-positive mesh volume ({mesh.volume:.4f}) after winding repair"
 
     return mesh, None
 
