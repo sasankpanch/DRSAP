@@ -2,6 +2,7 @@
 
 import open3d
 import numpy as np
+import json
 import torch
 import matplotlib.pyplot as plt
 import sys, os, urllib.request
@@ -75,7 +76,7 @@ pcd_final_clean.orient_normals_consistent_tangent_plane(k=15)     # "plane", not
 # min_plane_ratio:          how big the fit has to be to count
 print("RANSAC Plane Segmentation")
 
-def plane_segmentor(pcd, max_planes=6, dist_thres=0.05, ransac_n=3, num_iter=10000, min_plane_ratio=0.005, normal_angle_thres=25):
+def plane_segmentor(pcd, max_planes=6, dist_thres=0.05, ransac_n=3, num_iter=50000, min_plane_ratio=0.005, normal_angle_thres=25):
     
     min_plane_points = max(100, int(min_plane_ratio * len(pcd.points)))
     remaining = pcd
@@ -143,20 +144,31 @@ horizontal_planes_info = []
 all_coords = np.asarray(pcd_final_clean.points)
 z_midpoint = (np.min(all_coords[:, 2]) + np.max(all_coords[:, 2])) / 2.0
 
+# Per-plane (normal, d, centroid) equations, kept alongside the merged .ply
+# clouds so other scripts (e.g. Plane_Mesh_Builder.py) can rebuild geometry
+# from the actual RANSAC planes instead of re-running segmentation.
+plane_manifest = []
+
 for i, plane_pc in enumerate(plane_clouds):
     a, b, c, d = plane_models[i]
     plane_normal = np.array([a, b, c])
     plane_normal /= np.linalg.norm(plane_normal)
-    
+
     # Identify Horizontal Surfaces (|n_z| > 0.80)
     if np.abs(plane_normal[2]) > 0.80:
         mean_z = np.mean(np.asarray(plane_pc.points)[:, 2])
-        horizontal_planes_info.append((i, mean_z, plane_pc))
-                
+        horizontal_planes_info.append((i, mean_z, plane_pc, plane_normal, d))
+
     # Identify Vertical Surfaces or Walls (|n_z| < 0.40)
     elif np.abs(plane_normal[2]) < 0.40:
         print(f" -> Plane {i} classified as WALL")
         walls_pcd += plane_pc
+        points = np.asarray(plane_pc.points)
+        plane_manifest.append({
+            "id": i, "source": "primary", "label": "wall",
+            "normal": plane_normal.tolist(), "d": float(d),
+            "centroid": points.mean(axis=0).tolist(), "inlier_count": len(points),
+        })
     else:
         pcd_non_planar += plane_pc
 
@@ -165,20 +177,29 @@ if len(horizontal_planes_info) > 0:
     horizontal_planes_info.sort(key=lambda x: x[1])
     lowest_z = horizontal_planes_info[0][1]
     highest_z = horizontal_planes_info[-1][1]
-    
+
     floor_band_limit = lowest_z + 0.20
     ceiling_band_limit = highest_z - 0.20
-    
-    for idx, mean_z, plane_pc in horizontal_planes_info:
+
+    for idx, mean_z, plane_pc, plane_normal, d in horizontal_planes_info:
+        points = np.asarray(plane_pc.points)
+        entry = {
+            "id": idx, "source": "primary", "normal": plane_normal.tolist(), "d": float(d),
+            "centroid": points.mean(axis=0).tolist(), "inlier_count": len(points),
+        }
         if mean_z <= floor_band_limit:
             print(f" -> Plane {idx} (z={mean_z:.2f}m) grouped into FLOOR")
             floor_pcd += plane_pc
+            entry["label"] = "floor"
         elif mean_z >= ceiling_band_limit:
             print(f" -> Plane {idx} (z={mean_z:.2f}m) grouped into CEILING")
             ceiling_pcd += plane_pc
+            entry["label"] = "ceiling"
         else:
             print(f" -> Plane {idx} (z={mean_z:.2f}m) classified as TABLE SURFACE")
             tables_pcd += plane_pc
+            entry["label"] = "table"
+        plane_manifest.append(entry)
 
 # coarse wall second pass
 print("\nRunning Second-Pass Wall Recovery on remaining clutter...")
@@ -208,6 +229,12 @@ for pass_idx in range(4):
     if np.abs(normal[2]) < 0.40:
         print(f" -> Recovered bumpy wall plane (columns/windows) from clutter ({len(plane_pc.points)} points)")
         walls_pcd += plane_pc
+        points = np.asarray(plane_pc.points)
+        plane_manifest.append({
+            "id": 1000 + pass_idx, "source": "secondary", "label": "wall",
+            "normal": normal.tolist(), "d": float(d),
+            "centroid": points.mean(axis=0).tolist(), "inlier_count": len(points),
+        })
     else:
         # If it's a random flat object (like a table top) store it to return to clutter later
         temp_non_wall += plane_pc
@@ -243,5 +270,10 @@ save_cloud("Clutter_Furniture.ply", pcd_non_planar)
 # 6. Combine the room-shell surfaces into a single cloud
 room_combined = floor_pcd + ceiling_pcd + walls_pcd
 save_cloud("Room_Combined.ply", room_combined)
+
+manifest_path = os.path.join(output_dir, "plane_manifest.json")
+with open(manifest_path, "w") as f:
+    json.dump(plane_manifest, f, indent=2)
+print(f" -> Successfully wrote {manifest_path} ({len(plane_manifest)} planes)")
 
 print("\nProcessing complete!")
