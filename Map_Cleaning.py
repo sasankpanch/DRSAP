@@ -25,7 +25,7 @@ our_editing_room = "segmented_input/Editing-Room.ply"
 #points = int(file_stat.st_size / 20)
  
 print("Loading mesh and Point Cloud")
-mesh = open3d.io.read_triangle_mesh(our_mesh)                 # <-- change the file
+mesh = open3d.io.read_triangle_mesh(our_editing_room)                 # <-- change the file
 pcd = mesh.sample_points_uniformly(number_of_points=1000000)                         # This is to convert to point cloud
 
 # 1. Statistical Outlier
