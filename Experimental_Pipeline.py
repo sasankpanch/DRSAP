@@ -67,11 +67,47 @@ else:
 # 5. Normalization
 pcd_final_clean.estimate_normals(search_param=open3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
 
-pcd_final_clean.orient_normals_consistent_tangent_plane(k=15) 
+pcd_final_clean.orient_normals_consistent_tangent_plane(k=15)     # "plane", not "planes"
 
-# 
+# 5.5 Manual Crop (select-to-keep) -- last chance to strip cheese/junk that
+# survived every automated filter, right before it can pollute RANSAC's plane
+# fits. Uses Open3D's native crop editor: Y,Y to align view, K to lock the
+# screen and enter selection mode, drag (rectangle) or ctrl+click (polygon) to
+# select the region to KEEP, C to crop, F to leave selection mode. Close the
+# window without pressing C to skip/stop.
+def manual_crop_loop(pcd):
+    current = pcd
+    pass_idx = 0
+    while True:
+        pass_idx += 1
+        print(f"\nManual crop pass {pass_idx}: opening viewer window "
+              f"({len(current.points)} points currently) -- "
+              f"Y,Y to align | K to lock+select | drag or ctrl+click to select region to KEEP | "
+              f"C to crop | F to leave selection mode | close window when done.")
 
-# 6. RANSAC             
+        vis = open3d.visualization.VisualizerWithEditing()
+        vis.create_window(window_name=f"Manual Crop -- pass {pass_idx} (close when done)")
+        vis.add_geometry(current)
+        vis.run()
+        vis.destroy_window()
+
+        cropped = vis.get_cropped_geometry()
+        if cropped is None or len(cropped.points) == 0:
+            print(" -> No crop selection made, stopping manual cleanup.")
+            break
+
+        print(f" -> Kept {len(cropped.points)} / {len(current.points)} points this pass.")
+        current = cropped
+
+        again = input("Run another crop pass? [y/N]: ").strip().lower()
+        if again != "y":
+            break
+
+    return current
+
+pcd_final_clean = manual_crop_loop(pcd_final_clean)
+
+# 6. RANSAC
 # distance threshold:       how far a point can be away from the plane and count
 # normal_angle_threshold:   the degrees of disagreement allowed between point's normal and the plane's normal
 # max_planes:               how many planes to lookk for
