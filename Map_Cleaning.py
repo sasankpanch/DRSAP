@@ -9,7 +9,12 @@ import sys, os, urllib.request
 import open3d.ml as _ml3d
 import open3d.ml.torch as ml3d
 
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 print(f"Using accelerated hardware: {device}")
 
 import os
