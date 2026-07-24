@@ -15,10 +15,12 @@ env/
 .DS_Store
 Thumbs.db
 segmented_output/*
-!segmented_output/.gitkeep
-.claude/
-./logs
+segmented_output_manhattan/*
 segmented_output_advanzed/*
+segmented_output_concave/*
+!segmented_output/.gitkeep
 !segmented_output_advanzed/.gitkeep
 !segmented_output_manhattan/.gitkeep
-segmented_output_manhattan/*
+!segmented_output_concave/.gitkeep
+.claude/
+./logs
