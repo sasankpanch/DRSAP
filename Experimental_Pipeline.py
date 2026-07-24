@@ -15,6 +15,7 @@ print(f"Using accelerated hardware: {device}")
 import os
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
+
 our_mesh = "segmented_input/PLTL-Room-Scan.ply"
 baseline_mesh = "segmented_input/PLTL-Room-LIDAR-Scan.ply"
 conference_mesh = "segmented_input/Conference_Room.ply"
